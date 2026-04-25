@@ -76,15 +76,11 @@
 					</div>
 				</div>
 			</div>
-
-			<!-- Moves grid full width -->
 			<div style="margin-top:14px">
 				<div id="movesGrid" style="width:100%;"></div>
 			</div>
 
-			<!-- Upgrades area: hidden during battle, shown after game end -->
 			<div id="upgradesArea" style="display:none;margin-top:12px;display:flex;justify-content:center;gap:12px;align-items:center"></div>
-			<!-- QTE area (shows math question + choices) -->
 			<div id="qteArea" style="display:none;margin-top:12px;justify-content:center;align-items:center"></div>
 
 			<div id="log" class="log"></div>
@@ -93,7 +89,6 @@
 	</div>
 
 	<script>
-		// Minimal client-side battle using PokéAPI: player chooses move, AI picks randomly
 		const $ = id=>document.getElementById(id);
 		const loadBtn = $('loadBtn');
 		const attackBtn = $('attackBtn');
@@ -102,7 +97,7 @@
 		const resultEl = $('result');
 		const logEl = $('log');
 
-		let player = null; // {name,sprite,hp,max_hp,attack,defense,types,moves}
+		let player = null; 
 		let enemy = null;
 		let autoBattle = false;
 		let battleEnded = false;
@@ -151,20 +146,16 @@
 			try{
 				const pn = $('p1select').value; const en = $('p2select').value;
 				player = await fetchPokemon(pn); enemy = await fetchPokemon(en);
-				// record base stats so upgrades don't stack repeatedly
 				player.baseMaxHP = player.max_hp;
 				player.baseAttack = player.attack;
 				player.baseDefense = player.defense;
-				// apply saved upgrades immediately (deterministic from base)
 				player.max_hp = Math.max(1, player.baseMaxHP + (state.upgrades.hp||0)*5);
 				player.hp = player.max_hp;
 				player.attack = Math.max(1, player.baseAttack + (state.upgrades.attack||0)*2);
 				player.defense = Math.max(1, player.baseDefense + (state.upgrades.defense||0)*2);
-				// hide upgrades until battle ends
 				document.getElementById('upgradesArea').style.display = 'none';
 				battleEnded = false;
 				setFighterUI(player,1); setFighterUI(enemy,2);
-				// populate moves as selectable cards
 				movesGrid.innerHTML=''; const grid=document.createElement('div'); grid.className='moves-grid';
 				for(const mv of player.moves){
 					const card=document.createElement('button'); card.className='move-card'; card.setAttribute('type','button'); card.dataset.name=mv.name; card.dataset.type=mv.type; card.dataset.power=mv.power;
@@ -205,18 +196,15 @@
 			const mv = enemy.moves[Math.floor(Math.random()*enemy.moves.length)];
 			const atkSpr = $('sprite2'); atkSpr.classList.add('flash-anim'); setTimeout(()=>atkSpr.classList.remove('flash-anim'),300);
 			const res = calcDamage(enemy, player, mv);
-			// AI difficulty based on move power
 			const minP = 20, maxP = 120;
 			const aiDifficulty = Math.max(0, Math.min(1, ((mv.power||40) - minP) / (maxP - minP)));
-			const aiMissChance = 0.06 + aiDifficulty * 0.25; // higher-power moves more likely to 'miss' on poor roll
-			const aiCritChance = 0.06 + (1 - aiDifficulty) * 0.12; // lower-power moves have higher crit chance
+			const aiMissChance = 0.06 + aiDifficulty * 0.25; 
+			const aiCritChance = 0.06 + (1 - aiDifficulty) * 0.12; 
 			const aiQ = aiQuickFactor();
-			// decide miss
 			const aiMiss = Math.random() < aiMissChance * (1 - (aiQ - 0.6) / 0.4); // worse aiQ increases miss chance
 			let finalDmgAI = 0;
 			if(!aiMiss){
 				finalDmgAI = Math.max(1, Math.round(res.dmg * aiQ));
-				// critical
 				if(Math.random() < aiCritChance){ finalDmgAI = Math.round(finalDmgAI * 1.5); addLog(`<small>AI CRIT!</small>`); }
 			}
 			player.hp = Math.max(0, player.hp - finalDmgAI); setFighterUI(player,1);
@@ -224,20 +212,16 @@
 			else{ addLog(`<strong>${cap(enemy.name)}</strong> used <strong>${mv.name}</strong> → <span style="color:#ffb4b4">${finalDmgAI} dmg</span>${res.mult>1? ' (super effective)':''} <small>AI QTE ${aiQ.toFixed(2)}x</small>`); }
 			if(player.hp<=0){ addLog(`<strong style="color:#ff9aa8">${cap(player.name)} fainted — you lose.</strong>`); attackBtn.disabled=true; onBattleEnd(false); }
 			else if(autoBattle){ setTimeout(()=>{
-				// start player's auto attack with reduced delay
 				const qf = 1; playerAttack(qf);
 			}, 700); }
 		}
 
 		function aiQuickFactor(){
-			// simulate AI 'answer' accuracy: bias slightly towards average performance
 			const r = Math.random();
-			// use easing so most values cluster around 0.75-0.9
 			const factor = 0.6 + Math.pow(r,1.2)*0.4; // range 0.6-1.0
 			return Math.max(0.6, Math.min(1.0, factor));
 		}
 
-		// --- progression: levels, upgrades, and enemy scaling ---
 		const stateKey = 'poke_battle_state_v1';
 		let state = JSON.parse(localStorage.getItem(stateKey) || '{}');
 		if(!state.level) state.level = 1;
@@ -245,23 +229,21 @@
 		if(!state.upgrades) state.upgrades = {hp:0,attack:0,defense:0};
 		if(!state.enemyLevel) state.enemyLevel = 1;
 
-		// upgrade costs (XP)
 		const COST_HP = 20; // +5 HP
 		const COST_ATTACK = 15; // +2 attack
 		const COST_DEFENSE = 15; // +2 defense
 
 		function renderHUD(){
-			// render HUD and upgrade buttons below the moves grid in upgradesArea
+
 			const area = document.getElementById('upgradesArea');
 			area.innerHTML = '';
 			const info = document.createElement('p'); info.style.color='var(--muted)'; info.style.marginRight='12px'; info.textContent = `Level ${state.level} • XP ${state.xp}`;
 			area.appendChild(info);
 			if(!battleEnded){
-				// hide upgrade buttons while in a battle
+
 				area.style.display = 'none';
 				return;
 			}
-			// show upgrade buttons only when a battle has finished
 			area.style.display = 'flex';
 			const bp = document.createElement('div'); bp.style.display='flex'; bp.style.gap='8px';
 			const btnHp = document.createElement('button'); btnHp.textContent = `Upgrade HP (+5) ${COST_HP}XP`; btnHp.disabled = state.xp < COST_HP; btnHp.addEventListener('click', ()=>{ if(state.xp>=COST_HP){ state.xp -= COST_HP; state.upgrades.hp+=1; applyUpgradesToLoaded(); saveState(); renderHUD(); } });
@@ -276,7 +258,6 @@
 
 		function applyUpgradesToLoaded(){
 			if(player){
-				// reapply from base values
 				player.max_hp = Math.max(1, (player.baseMaxHP||player.max_hp) + (state.upgrades.hp||0)*5);
 				player.hp = Math.min(player.max_hp, player.hp);
 				player.attack = Math.max(1, (player.baseAttack||player.attack) + (state.upgrades.attack||0)*2);
@@ -290,16 +271,14 @@
 				state.xp += 10 * state.enemyLevel;
 				state.enemyLevel += 1;
 				addLog(`<em>Gained XP. Total XP: ${state.xp}</em>`);
-				// optional automatic level when XP reaches threshold
+
 				if(state.xp >= state.level*50){ state.xp -= state.level*50; state.level +=1; addLog(`<strong style="color:#a8ffb4">Leveled up! Now level ${state.level}</strong>`); }
 			} else {
 				state.xp = Math.max(0, state.xp - Math.floor(5*state.enemyLevel/2)); addLog('<em>Lost the battle. Try again to gain XP.</em>');
 			}
 			saveState();
-			// mark battle finished and show upgrades area
 			battleEnded = true;
 			renderHUD();
-			// show clear rebattle button in result area
 			resultEl.innerHTML = '';
 			const msg = document.createElement('div'); msg.style.display='flex'; msg.style.alignItems='center'; msg.style.gap='12px';
 			const txt = document.createElement('p'); txt.innerHTML = playerWon? `<strong style="color:var(--text)">You won!</strong>` : `<strong style="color:var(--text)">You lost</strong>`;
@@ -309,7 +288,6 @@
 
 		function resetBattle(){
 			if(!player || !enemy) return;
-			// restore HP to max (apply upgrades)
 			player.max_hp = Math.max(1, player.max_hp);
 			player.hp = player.max_hp;
 			enemy.hp = enemy.max_hp;
@@ -319,19 +297,15 @@
 			attackBtn.disabled = false;
 		}
 
-		// show QTE (non-blocking) under upgrades area with multiple choices
 		function showQTE(movePower=60){
 			if(!player || !enemy) return;
 			const qteArea = $('qteArea'); qteArea.innerHTML=''; qteArea.style.display='flex'; qteArea.style.gap='8px'; qteArea.style.justifyContent='center';
-			// difficulty scales with move power (20..120)
 			const minP = 20, maxP = 120;
 			const difficulty = Math.max(0, Math.min(1, (movePower - minP) / (maxP - minP)));
-			// number range expands with difficulty
 			const rangeBase = 10 + Math.round(difficulty * 30);
 			const a = Math.floor(Math.random()*rangeBase)+1; const b = Math.floor(Math.random()*Math.max(3, rangeBase/2))+1; const correct = a+b;
 			const qText = document.createElement('div'); qText.style.color='var(--text)'; qText.style.fontWeight='600'; qText.style.marginRight='12px'; qText.textContent = `Quick: ${a} + ${b} = ?`;
 			qteArea.appendChild(qText);
-			// build choices: correct + distractors further away as difficulty increases
 			const choices = new Set(); choices.add(correct);
 			const spread = 1 + Math.round(difficulty * 12);
 			while(choices.size < 4){ const delta = Math.floor(Math.random()*(spread*2+1)) - spread; choices.add(correct + delta); }
@@ -362,7 +336,6 @@
 		}
 
 		attackBtn.addEventListener('click', async ()=>{
-			// ensure a move is selected
 			const selected = document.querySelector('.move-card.selected');
 			if(!selected){ addLog('<em style="color:#ffd">Select a move first</em>'); return; }
 			attackBtn.disabled = true;

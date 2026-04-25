@@ -10,9 +10,6 @@ import (
 	"sync"
 )
 
-// ── Structs ────────────────────────────────────────────────────────────────
-
-// Pokemon holds everything we need from the PokéAPI response
 type Pokemon struct {
 	Name    string   `json:"name"`
 	HP      int      `json:"hp"`
@@ -25,14 +22,12 @@ type Pokemon struct {
 	Moves   []Move   `json:"moves"`
 }
 
-// Move represents a single attack
 type Move struct {
 	Name  string `json:"name"`
 	Power int    `json:"power"`
 	Type  string `json:"type"`
 }
 
-// TurnResult records what happened in one turn
 type TurnResult struct {
 	Attacker   string  `json:"attacker"`
 	Defender   string  `json:"defender"`
@@ -43,7 +38,6 @@ type TurnResult struct {
 	P2HP       int     `json:"p2_hp"`
 }
 
-// BattleResult is the full response sent back to the browser
 type BattleResult struct {
 	P1     *Pokemon     `json:"p1"`
 	P2     *Pokemon     `json:"p2"`
@@ -51,8 +45,6 @@ type BattleResult struct {
 	Winner string       `json:"winner"`
 	Error  string       `json:"error,omitempty"`
 }
-
-// ── PokéAPI response shapes ────────────────────────────────────────────────
 
 type apiPokemon struct {
 	Name    string `json:"name"`
@@ -86,9 +78,6 @@ type apiMove struct {
 	} `json:"type"`
 }
 
-// ── BattleActor interface ──────────────────────────────────────────────────
-
-// BattleActor defines anything that can participate in a battle
 type BattleActor interface {
 	TakeDamage(amount int)
 	IsAlive() bool
@@ -102,11 +91,10 @@ func (p *Pokemon) TakeDamage(amount int) {
 		p.HP = 0
 	}
 }
+
 func (p *Pokemon) IsAlive() bool   { return p.HP > 0 }
 func (p *Pokemon) GetName() string { return p.Name }
 func (p *Pokemon) GetHP() int      { return p.HP }
-
-// ── Type effectiveness chart ───────────────────────────────────────────────
 
 var typeChart = map[string]map[string]float64{
 	"fire":     {"grass": 2, "ice": 2, "bug": 2, "steel": 2, "water": 0.5, "rock": 0.5, "dragon": 0.5},
@@ -133,8 +121,6 @@ func getMultiplier(moveType string, defenderTypes []string) float64 {
 	}
 	return total
 }
-
-// ── API fetching ───────────────────────────────────────────────────────────
 
 func fetchMove(url string) (Move, error) {
 	resp, err := http.Get(url)
@@ -194,7 +180,6 @@ func fetchPokemon(name string) (*Pokemon, error) {
 		p.Types = append(p.Types, t.Type.Name)
 	}
 
-	// Fetch up to 4 moves with power > 0
 	count := 0
 	for _, m := range ap.Moves {
 		if count >= 4 {
@@ -216,15 +201,12 @@ func fetchPokemon(name string) (*Pokemon, error) {
 	return p, nil
 }
 
-// ── Battle logic ───────────────────────────────────────────────────────────
-
 func runBattle(p1, p2 *Pokemon) ([]TurnResult, string) {
 	p1HP := p1.HP
 	p2HP := p2.HP
 	var turns []TurnResult
 
 	for i := 0; i < 30; i++ {
-		// P1 attacks
 		mv1 := p1.Moves[rand.Intn(len(p1.Moves))]
 		mult1 := getMultiplier(mv1.Type, p2.Types)
 		dmg1 := int(float64(mv1.Power) * (float64(p1.Attack) / float64(p2.Defense)) * mult1)
@@ -240,7 +222,6 @@ func runBattle(p1, p2 *Pokemon) ([]TurnResult, string) {
 			break
 		}
 
-		// P2 attacks
 		mv2 := p2.Moves[rand.Intn(len(p2.Moves))]
 		mult2 := getMultiplier(mv2.Type, p1.Types)
 		dmg2 := int(float64(mv2.Power) * (float64(p2.Attack) / float64(p1.Defense)) * mult2)
@@ -272,11 +253,7 @@ func runBattle(p1, p2 *Pokemon) ([]TurnResult, string) {
 	return turns, winner
 }
 
-// ── HTTP handlers ──────────────────────────────────────────────────────────
-
 func homeHandler(w http.ResponseWriter, r *http.Request) {
-	// Serve the static index.html file directly. This avoids template parsing
-	// issues when the server's working directory differs from the source folder.
 	http.ServeFile(w, r, "index.html")
 }
 
@@ -291,7 +268,6 @@ func battleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch both Pokémon at the same time using goroutines
 	var p1, p2 *Pokemon
 	var err1, err2 error
 	var wg sync.WaitGroup
@@ -322,20 +298,15 @@ func battleHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(BattleResult{P1: p1, P2: p2, Turns: turns, Winner: winner})
 }
 
-// ── Entry point ────────────────────────────────────────────────────────────
-
 func main() {
 	http.HandleFunc("/", homeHandler)
-	// Serve the local background image and other static assets by path
 	http.HandleFunc("/PokemonBackground.png", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "PokemonBackground.png")
 	})
-	// Serve the consolidated stylesheet
 	http.HandleFunc("/styles.css", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "styles.css")
 	})
 	http.HandleFunc("/battle", battleHandler)
-	// use port 8081 to avoid conflicts; if you prefer 8080, stop other processes using it
 	fmt.Println("Server running → http://localhost:8081")
 	log.Fatal(http.ListenAndServe(":8081", nil))
 }
