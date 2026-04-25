@@ -1,0 +1,11 @@
+# Ignore build artifacts and editor backups
+*.exe
+*.exe~
+*.exe.*
+# Optional: ignore binary output in workspace root
+/pokemon-battle.exe
+/pokemon-battle.exe~
+
+# Editor temp files
+*~
+*.swp

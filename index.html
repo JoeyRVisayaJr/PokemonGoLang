@@ -1,0 +1,381 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Pokémon Battle Simulator</title>
+	<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="overlay"></div>
+	<div class="app">
+		<header>
+			<div style="display:flex;align-items:center;gap:12px">
+				<img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png" alt="logo" style="width:48px;height:48px"/>
+				<h1 style="color:var(--text);text-shadow:0 4px 14px rgba(0,0,0,.7);">Pokémon Battle Simulator</h1>
+			</div>
+
+			<div class="header-center">
+				<p class="creator">Created By Joey The Goat</p>
+			</div>
+			<div class="controls">
+				<select id="p1select">
+					<option value="pikachu">Pikachu</option>
+					<option value="charizard">Charizard</option>
+					<option value="bulbasaur">Bulbasaur</option>
+					<option value="squirtle">Squirtle</option>
+					<option value="gengar">Gengar</option>
+					<option value="machamp">Machamp</option>
+					<option value="dragonite">Dragonite</option>
+					<option value="snorlax">Snorlax</option>
+					<option value="eevee">Eevee</option>
+					<option value="jolteon">Jolteon</option>
+					<option value="vaporeon">Vaporeon</option>
+					<option value="flareon">Flareon</option>
+					<option value="mewtwo">Mewtwo</option>
+				</select>
+				<select id="p2select">
+					<option value="charizard">Charizard</option>
+					<option value="pikachu">Pikachu</option>
+					<option value="onix">Onix</option>
+					<option value="geodude">Geodude</option>
+					<option value="magikarp">Magikarp</option>
+					<option value="lucario">Lucario</option>
+				</select>
+				<button id="loadBtn">START BATTLE</button>
+				<button id="autoBtn" style="display:none">Auto-Battle</button>
+			</div>
+		</header>
+
+		<div class="panel">
+			<div class="battle-area">
+				<div class="fighter" id="leftF">
+					<img id="sprite1" class="sprite" src="" alt="sprite1" />
+					<div class="name" id="name1">—</div>
+					<div class="types" id="types1"></div>
+					<div class="hp-row">
+						<div style="display:flex;justify-content:space-between;color:var(--muted);font-size:13px"><p class="hp-label">HP</p><p id="hptext1" class="hp-value">0</p></div>
+						<div class="bar"><div id="hpfill1" class="hp-fill" style="width:0%"></div></div>
+					</div>
+				</div>
+
+				<div class="center-col">
+					<h2 class="role-label">Player</h2>
+					<button id="attackBtn" class="primary big" disabled style="min-width:160px;padding:16px 22px"> <span class="btn-icon">⚔️</span> Attack</button>
+					<h2 class="role-label">AI</h2>
+				</div>
+
+				<div class="fighter" id="rightF">
+					<img id="sprite2" class="sprite" src="" alt="sprite2" />
+					<div class="name" id="name2">—</div>
+					<div class="types" id="types2"></div>
+					<div class="hp-row">
+						<div style="display:flex;justify-content:space-between;color:var(--muted);font-size:13px"><p class="hp-label">HP</p><p id="hptext2" class="hp-value">0</p></div>
+						<div class="bar"><div id="hpfill2" class="hp-fill" style="width:0%"></div></div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Moves grid full width -->
+			<div style="margin-top:14px">
+				<div id="movesGrid" style="width:100%;"></div>
+			</div>
+
+			<!-- Upgrades area: hidden during battle, shown after game end -->
+			<div id="upgradesArea" style="display:none;margin-top:12px;display:flex;justify-content:center;gap:12px;align-items:center"></div>
+			<!-- QTE area (shows math question + choices) -->
+			<div id="qteArea" style="display:none;margin-top:12px;justify-content:center;align-items:center"></div>
+
+			<div id="log" class="log"></div>
+			<footer id="result" style="display:block"></footer>
+		</div>
+	</div>
+
+	<script>
+		// Minimal client-side battle using PokéAPI: player chooses move, AI picks randomly
+		const $ = id=>document.getElementById(id);
+		const loadBtn = $('loadBtn');
+		const attackBtn = $('attackBtn');
+		const autoBtn = $('autoBtn');
+		const movesGrid = $('movesGrid');
+		const resultEl = $('result');
+		const logEl = $('log');
+
+		let player = null; // {name,sprite,hp,max_hp,attack,defense,types,moves}
+		let enemy = null;
+		let autoBattle = false;
+		let battleEnded = false;
+
+		const typeChart = {
+			fire: {grass:2, ice:2, bug:2, steel:2, water:0.5, rock:0.5, dragon:0.5},
+			water:{fire:2, ground:2, rock:2, water:0.5, grass:0.5, dragon:0.5},
+			electric:{water:2, flying:2, electric:0.5, grass:0.5, ground:0},
+			grass:{water:2, ground:2, rock:2, fire:0.5, grass:0.5, flying:0.5, bug:0.5, dragon:0.5},
+			psychic:{fighting:2, poison:2, psychic:0.5, dark:0},
+			ice:{grass:2, ground:2, flying:2, dragon:2, fire:0.5, water:0.5, ice:0.5},
+			fighting:{normal:2, ice:2, rock:2, dark:2, steel:2, flying:0.5, psychic:0.5, ghost:0},
+			dragon:{dragon:2, steel:0.5, fairy:0},
+			normal:{rock:0.5, steel:0.5, ghost:0}
+		};
+		function getMultiplier(moveType, defenderTypes){
+			let total = 1;
+			const chart = typeChart[moveType];
+			if(!chart) return 1;
+			for(const dt of defenderTypes){ if(chart[dt]) total *= chart[dt]; }
+			return total;
+		}
+
+		function addLog(html){const d=document.createElement('div');d.className='log-entry';d.innerHTML=html;logEl.appendChild(d);logEl.scrollTop = logEl.scrollHeight}
+		function cap(s){return s? s.charAt(0).toUpperCase()+s.slice(1):''}
+
+		async function fetchPokemon(name){
+			name = name.toLowerCase().trim();
+			const resp = await fetch('https://pokeapi.co/api/v2/pokemon/'+name);
+			if(!resp.ok) throw new Error('Pokémon not found: '+name);
+			const ap = await resp.json();
+			const p = {name:ap.name, sprite: ap.sprites.front_default, types: ap.types.map(t=>t.type.name), hp:0, max_hp:0, attack:0, defense:0, moves:[]};
+			for(const s of ap.stats){ if(s.stat.name==='hp') p.hp=s.base_stat; if(s.stat.name==='attack') p.attack=s.base_stat; if(s.stat.name==='defense') p.defense=s.base_stat; }
+			p.max_hp = p.hp;
+			// gather moves: try first moves and fetch power/type until have up to 6
+			let count=0;
+			for(const m of ap.moves){ if(count>=6) break; try{ const mvResp = await fetch(m.move.url); const mv = await mvResp.json(); const power = mv.power||0; const type = mv.type?.name||'normal'; if(power>0){ p.moves.push({name:mv.name,power,type}); count++; } }catch(e){continue} }
+			if(p.moves.length===0) p.moves=[{name:'tackle',power:40,type:'normal'}];
+			return p;
+		}
+
+		function setFighterUI(p, idx){ if(!p) return; $('sprite'+idx).src=p.sprite||''; $('name'+idx).textContent=cap(p.name); const typesEl=$('types'+idx); typesEl.innerHTML=''; p.types.forEach(t=>{const s=document.createElement('div');s.className='type-badge';s.textContent=t;typesEl.appendChild(s)}); const pct=Math.max(0,Math.min(100,Math.round((p.hp/p.max_hp)*100))); $('hptext'+idx).textContent = p.hp; $('hpfill'+idx).style.width = pct+'%'; }
+
+		async function loadBoth(){
+			logEl.innerHTML=''; addLog('<em>Loading Pokémon data…</em>');
+			try{
+				const pn = $('p1select').value; const en = $('p2select').value;
+				player = await fetchPokemon(pn); enemy = await fetchPokemon(en);
+				// record base stats so upgrades don't stack repeatedly
+				player.baseMaxHP = player.max_hp;
+				player.baseAttack = player.attack;
+				player.baseDefense = player.defense;
+				// apply saved upgrades immediately (deterministic from base)
+				player.max_hp = Math.max(1, player.baseMaxHP + (state.upgrades.hp||0)*5);
+				player.hp = player.max_hp;
+				player.attack = Math.max(1, player.baseAttack + (state.upgrades.attack||0)*2);
+				player.defense = Math.max(1, player.baseDefense + (state.upgrades.defense||0)*2);
+				// hide upgrades until battle ends
+				document.getElementById('upgradesArea').style.display = 'none';
+				battleEnded = false;
+				setFighterUI(player,1); setFighterUI(enemy,2);
+				// populate moves as selectable cards
+				movesGrid.innerHTML=''; const grid=document.createElement('div'); grid.className='moves-grid';
+				for(const mv of player.moves){
+					const card=document.createElement('button'); card.className='move-card'; card.setAttribute('type','button'); card.dataset.name=mv.name; card.dataset.type=mv.type; card.dataset.power=mv.power;
+					const icon=document.createElement('div'); icon.className='type-icon'; icon.textContent = typeIcon(mv.type);
+					const meta=document.createElement('div'); meta.className='move-meta'; const mn=document.createElement('div'); mn.className='move-name'; mn.textContent=mv.name; const mp=document.createElement('div'); mp.className='move-power'; mp.textContent=`Power ${mv.power} — ${mv.type}`; meta.appendChild(mn); meta.appendChild(mp);
+					card.appendChild(icon); card.appendChild(meta);
+					card.addEventListener('click', ()=>{ Array.from(grid.children).forEach(c=>c.classList.remove('selected')); card.classList.add('selected'); attackBtn.disabled=false; });
+					grid.appendChild(card);
+				}
+				movesGrid.appendChild(grid);
+				attackBtn.disabled = false; addLog(`<strong>${cap(player.name)}</strong> vs <strong>${cap(enemy.name)}</strong> — ready.`);
+				renderHUD();
+			}catch(e){ addLog(`<strong style="color:#ffb4b4">${e.message}</strong>`); }
+		}
+
+		function calcDamage(att, def, move){ const mult = getMultiplier(move.type, def.types); let dmg = Math.round(move.power * (att.attack / Math.max(1, def.defense)) * mult); if(dmg<1 && mult>0) dmg=1; return {dmg,mult}; }
+
+		function typeIcon(type){
+			const map = {fire:'🔥',water:'💧',electric:'⚡',grass:'🍃',psychic:'🔮',ice:'❄️',fighting:'🥊',dragon:'🐲',normal:'🔰'};
+			return map[type]||'•';
+		}
+
+		async function playerAttack(qFactor=1, critMult=1, missed=false){ if(!player||!enemy) return; const selected = document.querySelector('.move-card.selected'); if(!selected) return; const mv = {name:selected.dataset.name,power:parseInt(selected.dataset.power),type:selected.dataset.type}; // animate attack
+			const atkSpr = $('sprite1'); atkSpr.classList.add('flash-anim'); setTimeout(()=>atkSpr.classList.remove('flash-anim'),300);
+			const res = calcDamage(player, enemy, mv);
+			let finalDmg = 0;
+			if(!missed){ finalDmg = Math.max(1, Math.round(res.dmg * (qFactor||1) * (critMult||1))); }
+			enemy.hp = Math.max(0, enemy.hp - finalDmg); setFighterUI(enemy,2); // enemy hurt anim
+			const defSpr = $('sprite2'); defSpr.classList.add('hurt'); setTimeout(()=>defSpr.classList.remove('hurt'),450);
+			addLog(`<strong>${cap(player.name)}</strong> used <strong>${mv.name}</strong> → <span style="color:#ffb4b4">${finalDmg} dmg</span>${res.mult>1? ' (super effective)':''}${qFactor!==1? ` • QTE ${qFactor.toFixed(2)}x` : ''}${critMult>1? ' • CRIT!' : ''}${missed? ' • MISS' : ''}`);
+			if(enemy.hp<=0){ addLog(`<strong style="color:var(--text)">${cap(enemy.name)} fainted — you win!</strong>`); attackBtn.disabled=true; onBattleEnd(true); return }
+			// enemy turn
+			await new Promise(r=>setTimeout(r,500));
+			enemyTurn();
+		}
+
+		function enemyTurn(){
+			const mv = enemy.moves[Math.floor(Math.random()*enemy.moves.length)];
+			const atkSpr = $('sprite2'); atkSpr.classList.add('flash-anim'); setTimeout(()=>atkSpr.classList.remove('flash-anim'),300);
+			const res = calcDamage(enemy, player, mv);
+			// AI difficulty based on move power
+			const minP = 20, maxP = 120;
+			const aiDifficulty = Math.max(0, Math.min(1, ((mv.power||40) - minP) / (maxP - minP)));
+			const aiMissChance = 0.06 + aiDifficulty * 0.25; // higher-power moves more likely to 'miss' on poor roll
+			const aiCritChance = 0.06 + (1 - aiDifficulty) * 0.12; // lower-power moves have higher crit chance
+			const aiQ = aiQuickFactor();
+			// decide miss
+			const aiMiss = Math.random() < aiMissChance * (1 - (aiQ - 0.6) / 0.4); // worse aiQ increases miss chance
+			let finalDmgAI = 0;
+			if(!aiMiss){
+				finalDmgAI = Math.max(1, Math.round(res.dmg * aiQ));
+				// critical
+				if(Math.random() < aiCritChance){ finalDmgAI = Math.round(finalDmgAI * 1.5); addLog(`<small>AI CRIT!</small>`); }
+			}
+			player.hp = Math.max(0, player.hp - finalDmgAI); setFighterUI(player,1);
+			if(aiMiss){ addLog(`<strong>${cap(enemy.name)}</strong> tried <strong>${mv.name}</strong> → <em style="color:#ffd">Missed</em>`); }
+			else{ addLog(`<strong>${cap(enemy.name)}</strong> used <strong>${mv.name}</strong> → <span style="color:#ffb4b4">${finalDmgAI} dmg</span>${res.mult>1? ' (super effective)':''} <small>AI QTE ${aiQ.toFixed(2)}x</small>`); }
+			if(player.hp<=0){ addLog(`<strong style="color:#ff9aa8">${cap(player.name)} fainted — you lose.</strong>`); attackBtn.disabled=true; onBattleEnd(false); }
+			else if(autoBattle){ setTimeout(()=>{
+				// start player's auto attack with reduced delay
+				const qf = 1; playerAttack(qf);
+			}, 700); }
+		}
+
+		function aiQuickFactor(){
+			// simulate AI 'answer' accuracy: bias slightly towards average performance
+			const r = Math.random();
+			// use easing so most values cluster around 0.75-0.9
+			const factor = 0.6 + Math.pow(r,1.2)*0.4; // range 0.6-1.0
+			return Math.max(0.6, Math.min(1.0, factor));
+		}
+
+		// --- progression: levels, upgrades, and enemy scaling ---
+		const stateKey = 'poke_battle_state_v1';
+		let state = JSON.parse(localStorage.getItem(stateKey) || '{}');
+		if(!state.level) state.level = 1;
+		if(!state.xp) state.xp = 0;
+		if(!state.upgrades) state.upgrades = {hp:0,attack:0,defense:0};
+		if(!state.enemyLevel) state.enemyLevel = 1;
+
+		// upgrade costs (XP)
+		const COST_HP = 20; // +5 HP
+		const COST_ATTACK = 15; // +2 attack
+		const COST_DEFENSE = 15; // +2 defense
+
+		function renderHUD(){
+			// render HUD and upgrade buttons below the moves grid in upgradesArea
+			const area = document.getElementById('upgradesArea');
+			area.innerHTML = '';
+			const info = document.createElement('p'); info.style.color='var(--muted)'; info.style.marginRight='12px'; info.textContent = `Level ${state.level} • XP ${state.xp}`;
+			area.appendChild(info);
+			if(!battleEnded){
+				// hide upgrade buttons while in a battle
+				area.style.display = 'none';
+				return;
+			}
+			// show upgrade buttons only when a battle has finished
+			area.style.display = 'flex';
+			const bp = document.createElement('div'); bp.style.display='flex'; bp.style.gap='8px';
+			const btnHp = document.createElement('button'); btnHp.textContent = `Upgrade HP (+5) ${COST_HP}XP`; btnHp.disabled = state.xp < COST_HP; btnHp.addEventListener('click', ()=>{ if(state.xp>=COST_HP){ state.xp -= COST_HP; state.upgrades.hp+=1; applyUpgradesToLoaded(); saveState(); renderHUD(); } });
+			const btnAtk = document.createElement('button'); btnAtk.textContent = `Upgrade ATK (+2) ${COST_ATTACK}XP`; btnAtk.disabled = state.xp < COST_ATTACK; btnAtk.addEventListener('click', ()=>{ if(state.xp>=COST_ATTACK){ state.xp -= COST_ATTACK; state.upgrades.attack+=1; applyUpgradesToLoaded(); saveState(); renderHUD(); } });
+			const btnDef = document.createElement('button'); btnDef.textContent = `Upgrade DEF (+2) ${COST_DEFENSE}XP`; btnDef.disabled = state.xp < COST_DEFENSE; btnDef.addEventListener('click', ()=>{ if(state.xp>=COST_DEFENSE){ state.xp -= COST_DEFENSE; state.upgrades.defense+=1; applyUpgradesToLoaded(); saveState(); renderHUD(); } });
+			[btnHp,btnAtk,btnDef].forEach(b=>{ b.className='primary'; b.style.background='linear-gradient(90deg,#6be281,#4caf50)'; b.style.padding='6px 10px'; b.style.fontSize='13px' });
+			bp.appendChild(btnHp); bp.appendChild(btnAtk); bp.appendChild(btnDef);
+			area.appendChild(bp);
+		}
+
+		function saveState(){ localStorage.setItem(stateKey, JSON.stringify(state)); }
+
+		function applyUpgradesToLoaded(){
+			if(player){
+				// reapply from base values
+				player.max_hp = Math.max(1, (player.baseMaxHP||player.max_hp) + (state.upgrades.hp||0)*5);
+				player.hp = Math.min(player.max_hp, player.hp);
+				player.attack = Math.max(1, (player.baseAttack||player.attack) + (state.upgrades.attack||0)*2);
+				player.defense = Math.max(1, (player.baseDefense||player.defense) + (state.upgrades.defense||0)*2);
+				setFighterUI(player,1);
+			}
+		}
+
+		function onBattleEnd(playerWon){
+			if(playerWon){
+				state.xp += 10 * state.enemyLevel;
+				state.enemyLevel += 1;
+				addLog(`<em>Gained XP. Total XP: ${state.xp}</em>`);
+				// optional automatic level when XP reaches threshold
+				if(state.xp >= state.level*50){ state.xp -= state.level*50; state.level +=1; addLog(`<strong style="color:#a8ffb4">Leveled up! Now level ${state.level}</strong>`); }
+			} else {
+				state.xp = Math.max(0, state.xp - Math.floor(5*state.enemyLevel/2)); addLog('<em>Lost the battle. Try again to gain XP.</em>');
+			}
+			saveState();
+			// mark battle finished and show upgrades area
+			battleEnded = true;
+			renderHUD();
+			// show clear rebattle button in result area
+			resultEl.innerHTML = '';
+			const msg = document.createElement('div'); msg.style.display='flex'; msg.style.alignItems='center'; msg.style.gap='12px';
+			const txt = document.createElement('p'); txt.innerHTML = playerWon? `<strong style="color:var(--text)">You won!</strong>` : `<strong style="color:var(--text)">You lost</strong>`;
+			const rb = document.createElement('button'); rb.id = 'rebattleBtn'; rb.className='primary'; rb.textContent = 'Rebattle'; rb.addEventListener('click', ()=>{ resetBattle(); });
+			msg.appendChild(txt); msg.appendChild(rb); resultEl.appendChild(msg);
+		}
+
+		function resetBattle(){
+			if(!player || !enemy) return;
+			// restore HP to max (apply upgrades)
+			player.max_hp = Math.max(1, player.max_hp);
+			player.hp = player.max_hp;
+			enemy.hp = enemy.max_hp;
+			setFighterUI(player,1); setFighterUI(enemy,2);
+			logEl.innerHTML = '';
+			resultEl.innerHTML = '';
+			attackBtn.disabled = false;
+		}
+
+		// show QTE (non-blocking) under upgrades area with multiple choices
+		function showQTE(movePower=60){
+			if(!player || !enemy) return;
+			const qteArea = $('qteArea'); qteArea.innerHTML=''; qteArea.style.display='flex'; qteArea.style.gap='8px'; qteArea.style.justifyContent='center';
+			// difficulty scales with move power (20..120)
+			const minP = 20, maxP = 120;
+			const difficulty = Math.max(0, Math.min(1, (movePower - minP) / (maxP - minP)));
+			// number range expands with difficulty
+			const rangeBase = 10 + Math.round(difficulty * 30);
+			const a = Math.floor(Math.random()*rangeBase)+1; const b = Math.floor(Math.random()*Math.max(3, rangeBase/2))+1; const correct = a+b;
+			const qText = document.createElement('div'); qText.style.color='var(--text)'; qText.style.fontWeight='600'; qText.style.marginRight='12px'; qText.textContent = `Quick: ${a} + ${b} = ?`;
+			qteArea.appendChild(qText);
+			// build choices: correct + distractors further away as difficulty increases
+			const choices = new Set(); choices.add(correct);
+			const spread = 1 + Math.round(difficulty * 12);
+			while(choices.size < 4){ const delta = Math.floor(Math.random()*(spread*2+1)) - spread; choices.add(correct + delta); }
+			const arr = Array.from(choices);
+			// shuffle
+			for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]] }
+			arr.forEach(val=>{
+				const btn = document.createElement('button'); btn.className='primary'; btn.style.padding='8px 12px'; btn.textContent = val;
+				btn.addEventListener('click', ()=>{
+					// compute factor based on distance
+					const diff = Math.abs(val - correct);
+					const maxDiff = 10 + Math.round(difficulty*20);
+					const factor = Math.max(0, 1 - Math.min(diff, maxDiff)/maxDiff);
+					let qf = 0.5 + 0.5*factor; // 0.5..1
+					// critical chance higher for lower-power moves
+					const critChance = 0.15 * (1 - difficulty);
+					const isCrit = (val === correct) && (Math.random() < critChance);
+					const critMult = isCrit ? 1.5 : 1;
+					// miss chance increases for higher-power moves when answer is far
+					const miss = (diff > Math.ceil(maxDiff*0.6)) && (Math.random() < (0.08 + difficulty*0.25));
+					if(miss) qf = 0;
+					qteArea.innerHTML=''; qteArea.style.display='none';
+					// perform attack with the chosen factor, crit and miss
+					playerAttack(qf, critMult, miss);
+				});
+				qteArea.appendChild(btn);
+			});
+		}
+
+		attackBtn.addEventListener('click', async ()=>{
+			// ensure a move is selected
+			const selected = document.querySelector('.move-card.selected');
+			if(!selected){ addLog('<em style="color:#ffd">Select a move first</em>'); return; }
+			attackBtn.disabled = true;
+			const mvPower = parseInt(selected.dataset.power || '60');
+			showQTE(mvPower);
+		});
+		loadBtn.addEventListener('click', async ()=>{ autoBattle=false; $('result').textContent=''; await loadBoth(); });
+		autoBtn.addEventListener('click', ()=>{ autoBattle = !autoBattle; autoBtn.textContent = autoBattle? 'Stop Auto' : 'Auto-Battle'; if(autoBattle){ // start auto loop if ready
+			if(player && enemy && player.hp>0 && enemy.hp>0){ playerAttack(); }
+		}});
+
+		// load defaults on start
+		window.addEventListener('load', ()=>{ loadBoth(); });
+	</script>
+</body>
+</html>
